@@ -13766,8 +13766,10 @@ SNhQ0hMRkbChpCciImFDSU9ERMKGkp6IiISN/we9GKfDtIxIZgAAAABJRU5ErkJggg==
 <div class="text_cell_render border-box-sizing rendered_html">
 <p><strong>Answer: </strong></p>
 <ul>
-<li>When the model is trained with a max depth of 1, it suffers from high bias.</li>
-<li>When it is trained with a max depth of 10, it is suffering from high variance.  The visual cue in the graph that justifies my conclusion is that you can see that the training and validations score diverge more as the maximum depth increases.  Additionally, the model displays a high validation error rate, while the testing error rate is low -- classic signs of overfitting.</li>
+<li><p>When the model is trained with a max depth of 1, it suffers from high bias, as the graph above shows.  Both training and validation complexity curves have low scores, indicating that both suffer from high error rates.  The model is oversimplified and underfitting the training data.</p>
+</li>
+<li><p>When it is trained with a max depth of 10, it is suffering from high variance.  The visual cue in the graph that justifies my conclusion is that you can see that the training and validations score diverge more as the maximum depth increases.  Additionally, the model displays a high validation error rate, while the testing error rate is low -- classic signs of overfitting.</p>
+</li>
 </ul>
 
 </div>
