@@ -73,7 +73,7 @@ def preprocess(df, **kwargs):
         'driver_race',
         'fine_grained_location',
         'id',
-        # 'is_arrested',
+        'is_arrested',
         'officer_id',
         'police_department',
         'search_type_raw',
@@ -99,9 +99,6 @@ def preprocess(df, **kwargs):
     populated = df[df.stop_time.notnull()]['stop_time'].sort_values()
     median_stop_time = populated.iloc[populated.shape[0] // 2]
     df['stop_time'].fillna(median_stop_time, inplace=True)
-
-    # Fill in empty is_arrested values with False
-    df['is_arrested'].fillna(False, inplace=True)
 
     # Categorize stop_time into time-of-day(morning, afternoon, evening, small hours) and stop_date by season
     df = categorize_dates_times(df)
