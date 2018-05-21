@@ -79,8 +79,8 @@ def preprocess(df, **kwargs):
         'search_type_raw',
         'search_type',
         'state',
-        'search_conducted',
-        'contraband_found',
+        # 'search_conducted',
+        # 'contraband_found',
     ]
     if drop_location_raw:
         drop_cols.append('location_raw')
@@ -140,7 +140,7 @@ def preprocess(df, **kwargs):
     df.drop_duplicates(inplace=True)
 
     # Convert booleans to 0 and 1
-    # df = binarize(df, ['search_conducted', 'contraband_found'])
+    df = binarize(df, ['search_conducted', 'contraband_found'])
 
 
     # Normalize driver_age
