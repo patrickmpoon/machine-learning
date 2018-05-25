@@ -45,7 +45,7 @@ def binarize(df, columns):
     return df
 
 
-def normalize_driver_age(df, columns):
+def normalize_columns(df, columns):
     print('Normalizing driver_age...')
     scaler = MinMaxScaler() # default=(0, 1)
     for col in columns:
@@ -53,24 +53,62 @@ def normalize_driver_age(df, columns):
     return df
 
 
+def column_names(df):
+    return list(df.columns.values)
+
+
+def encode_categoricals(df, cols_to_encode, encode_labels):
+    """Use LabelEncoder() to enumerate categorical fields values;  If encode_labels=False: One-hot encode
+    :param pd.DataFrame df:
+    :param list[str] cols_to_encode:
+    :param bool encode_labels:
+    :return: Dataframe with categorical labels that have been enumerated in-place in their respective columns or
+             multiple binary columns if one-hot encoded
+    :rtype: pd.DataFrame
+    """
+    col_names = column_names(df)
+    parsed_cols = [col for col in cols_to_encode if col in col_names]
+    # for col in cols_to_encode:
+    #     if col in col_names:
+    #         parsed_cols.append(col)
+
+    if encode_labels:
+        print('LabelEncoding appropriate columns...')
+        for col in parsed_cols:
+            encoder = LabelEncoder()
+            df[col] = encoder.fit_transform(df[col].astype('str'))
+    else:
+        df = pd.get_dummies(df, columns=parsed_cols)
+    return df
+
+
+def populate_empty_vals(df, col_name):
+    print('Filling empty {} values with median...'.format(col_name))
+    populated = df[df[col_name].notnull()][col_name].sort_values()
+    median_value = populated.iloc[populated.shape[0] // 2]
+    df[col_name].fillna(median_value, inplace=True)
+    return df
+
+
 def preprocess(df, **kwargs):
     # Set flags
-    drop_location_raw = kwargs['drop_location_raw']
+    include_location_raw = kwargs['include_location_raw']
+    include_driver_race = kwargs['include_driver_race']
     perform_oversampling = kwargs['perform_oversampling']
+    perform_undersampling = kwargs['perform_undersampling']
+    # True: Use LabelEncoder to enumerate categorical fields values;  False: Use one-hot encoding via pd.get_dummies
     encode_labels = kwargs['encode_labels']
 
-    print("Flags:\n\tdrop_location_raw: {}\n\tperform_oversampling: {}\n\tencode_labels: {}".format(drop_location_raw,
+    print("Flags:\n\tinclude_location_raw: {}\n\tperform_oversampling: {}\n\tencode_labels: {}".format(include_location_raw,
         perform_oversampling, encode_labels))
 
     # Drop non-essential base columns
     print('Dropping non-essential columns...')
+    # Start with columns that are always dropped
     drop_cols = [
         'county_fips',
-        # 'county_name',
         'driver_age',
-        # 'driver_age_raw',
         'driver_race_raw',
-        'driver_race',
         'fine_grained_location',
         'id',
         'is_arrested',
@@ -79,35 +117,31 @@ def preprocess(df, **kwargs):
         'search_type_raw',
         'search_type',
         'state',
-        # 'search_conducted',
-        # 'contraband_found',
     ]
-    if drop_location_raw:
+
+    if not include_location_raw:
         drop_cols.append('location_raw')
+    if not include_driver_race:
+        drop_cols.append('driver_race')
+
     df.drop(drop_cols, axis=1, inplace=True)
 
     # Drop empty stop_outcome and county_name rows
     print('Dropping empty stop_outcome and county_name rows...')
-    # df.dropna(subset=['stop_outcome', 'county_name'], axis=0, inplace=True)
-    df.dropna(subset=['stop_outcome'], axis=0, inplace=True)
+    df.dropna(subset=['stop_outcome', 'county_name'], axis=0, inplace=True)
+    # df.dropna(subset=['stop_outcome'], axis=0, inplace=True) [REMOVEME?]
 
     # Remove records with age less than 15
-    df = drop_threshold_ages(df, 15)
+    if 'driver_age_raw' in column_names(df):
+        df = drop_threshold_ages(df, 15)
 
     # Fill in empty stop_time values with median value
-    print('Filling empty stop_time values with median...')
-    populated = df[df.stop_time.notnull()]['stop_time'].sort_values()
-    median_stop_time = populated.iloc[populated.shape[0] // 2]
-    df['stop_time'].fillna(median_stop_time, inplace=True)
+    df = populate_empty_vals(df, 'stop_time')
 
-    # Categorize stop_time into time-of-day(morning, afternoon, evening, small hours) and stop_date by season
+    # Categorize stop_date and stop_time into month, day, hour, and min columns
     df = categorize_dates_times(df)
 
-    # Transform driver_gender to binary
-    # print('Transforming driver_gender to binary is_male...')
-    # df['is_male'] = df['driver_gender'].apply(lambda x: 1 if x == 'M' else 0)
-
-    if not drop_location_raw:
+    if include_location_raw:
         print('LabelEncoding location_raw...')
         encoder = LabelEncoder()
         df['location_raw'] = encoder.fit_transform(df['location_raw'].astype(str))
@@ -141,26 +175,19 @@ def preprocess(df, **kwargs):
 
 
     # Normalize driver_age
-    df = normalize_driver_age(df, ['driver_age_raw'])
+    df = normalize_columns(df, ['driver_age_raw'])
 
     # Categorical variables to one-hot encode or label encode
     cols_to_encode = [
         'county_name',
-        # 'day_period',
         'driver_gender',
-        # 'driver_race',
-        # 'season',
+        'driver_race',
+        'location_raw',
         'stop_duration',
     ]
 
-    # Eithen label-encode or one-hot encode categorical variables
-    if encode_labels:
-        print('LabelEncoding appropriate columns...')
-        for col in cols_to_encode:
-            encoder = LabelEncoder()
-            df[col] = encoder.fit_transform(df[col].astype('str'))
-    else:
-        df = pd.get_dummies(df, columns=cols_to_encode)
+    # Either label-encode or one-hot encode categorical variables
+    df = encode_categoricals(df, cols_to_encode, encode_labels)
 
     # LabelEncode stop_outcome
     encoder = LabelEncoder()
@@ -171,12 +198,13 @@ def preprocess(df, **kwargs):
     (train, test) = split_train_test(df, split_pct)
 
     # Oversample
-    if perform_oversampling:
+    if perform_oversampling and not perform_undersampling:
         print('Oversampling rows...')
         train = shuffle(oversample(train), random_state=0)
 
     # Undersample largest outcome
-    # train = undersample(train)
+    if perform_undersampling and not perform_oversampling:
+        train = undersample(train)
 
     # Emulate dropout layer
     # dropout_pct = .75
@@ -187,21 +215,47 @@ def preprocess(df, **kwargs):
 
 if __name__ == '__main__':
     stages = [{
-        # 'drop_location_raw': True,
-        # 'perform_oversampling': False,
-        # 'encode_labels': False,
-    # }, {
-    #     'drop_location_raw': False,
-    #     'perform_oversampling': False,
-    #     'encode_labels': False,
-    # }, {
-        'drop_location_raw': False,
+        'include_location_raw': False,
+        'include_driver_race': True,
+        'encode_labels': False,
         'perform_oversampling': False,
+        'perform_undersampling': False,
+    }, {
+        'include_location_raw': True,
+        'include_driver_race': True,
+        'encode_labels': False,
+        'perform_oversampling': False,
+        'perform_undersampling': False,
+    }, {
+        'include_location_raw': True,
+        'include_driver_race': True,
         'encode_labels': True,
-    # }, {
-    #     'drop_location_raw': False,
-    #     'perform_oversampling': True,
-    #     'encode_labels': True,
+        'perform_oversampling': False,
+        'perform_undersampling': False,
+    }, {
+        'include_location_raw': True,
+        'include_driver_race': True,
+        'encode_labels': True,
+        'perform_oversampling': True,
+        'perform_undersampling': False,
+    }, {
+        'include_location_raw': True,
+        'include_driver_race': True,
+        'encode_labels': True,
+        'perform_oversampling': False,
+        'perform_undersampling': True,
+    }, {
+        'include_location_raw': True,
+        'include_driver_race': False,
+        'encode_labels': False,
+        'perform_oversampling': False,
+        'perform_undersampling': False,
+    }, {
+        'include_location_raw': True,
+        'include_driver_race': False,
+        'encode_labels': True,
+        'perform_oversampling': False,
+        'perform_undersampling': False,
     }]
 
     for idx, stage in enumerate(stages, 1):
@@ -212,9 +266,9 @@ if __name__ == '__main__':
         print('[Row counts] train: {}  test: {}'.format(train.shape[0], test.shape[0]))
 
         print('\nPickling dataframe to file...')
-        # train.to_pickle('../data/stage{}-train.pkl'.format(idx))
-        # test.to_pickle('../data/stage{}-test.pkl'.format(idx))
-        train.to_pickle('../data/stage6-train.pkl'.format(idx))
-        test.to_pickle('../data/stage6-test.pkl'.format(idx))
+        train.to_pickle('../data/stage{}-train.pkl'.format(idx))
+        test.to_pickle('../data/stage{}-test.pkl'.format(idx))
+        # train.to_pickle('../data/stage6-train.pkl'.format(idx))
+        # test.to_pickle('../data/stage6-test.pkl'.format(idx))
 
     print('\nFinished preprocessing.')
